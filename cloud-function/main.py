@@ -9,7 +9,7 @@ def controller(request):
     Recives a JSON file containing a time-stamped temperature data value
     Returns a cooling value for recieved data
     """
-    request_json = request.get_json(silent=TRUE)
+    request_json = request.get_json(silent=True)
     if request_json is None:
         return "Invalid JSON: Request body is empty or not valid JSON", 400
     
