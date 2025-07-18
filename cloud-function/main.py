@@ -1,15 +1,16 @@
-# /main.py
-import functions_framework, datetime
+# cloud-function/main.py
+import functions_framework 
+from datetime import datetime, timezone
 from pidController import PID_Controller
 
-pi = PID_Controller(Kp=-5.21, Ki=-1.12, Kd = 0, setpoint = 295)
+pid = PID_Controller(Kp=-5.21, Ki=-1.12, Kd = 0, setpoint = 295)
 @functions_framework.http
 def controller(request):
     """
     Recives a JSON file containing temperature
     Returns a cooling value for recieved data
     """
-    server_recieve_time = datetime.utcnow().isoformat() + "Z"
+    server_recieve_time = datetime.now(timezone.utc).isoformat()
 
     request_json = request.get_json(silent=True)
     if request_json is None:
@@ -17,15 +18,15 @@ def controller(request):
     
     current_temp = request_json['temperature']
     dt = request_json['dt']
-    client_send_time = request_json.get('client_send', None)
+    client_send_time = request_json.get('client_send_time')
 
-    pi_value = pi.feedback(current_temp, dt)
-    cooling_power = {'coolingPower': max(0, pi_value)}
+    pid_value = pid.feedback(current_temp, dt)
+    cooling_power = max(0, pid_value)
 
     response = {
-        "Cooling_power": cooling_power,
+        "cooling_power": cooling_power,
         "client_send_time": client_send_time,
         "server_recieve_time": server_recieve_time
     }
 
-    return cooling_power
+    return response
