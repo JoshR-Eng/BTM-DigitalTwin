@@ -69,6 +69,9 @@ for temperature in temperature_data[1:]:
                              client_send_time, 
                              server_recieve_time, 
                              client_recieve_time.isoformat()])
+            
+        print(f"-> Received: Cooling Power={cooling_power:.2f} W")
+
     else:
         print("Error")
         exit()
@@ -78,4 +81,4 @@ for temperature in temperature_data[1:]:
         "temperature": temperature,
         "timestamp": current_time
     })
-    time.sleep(1)
+    time.sleep(0.01)
