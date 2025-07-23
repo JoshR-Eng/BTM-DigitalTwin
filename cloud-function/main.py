@@ -10,8 +10,6 @@ def controller(request):
     Recives a JSON file containing temperature
     Returns a cooling value for recieved data
     """
-    server_recieve_time = datetime.now(timezone.utc).isoformat()
-
     request_json = request.get_json(silent=True)
     if request_json is None:
         return "Invalid JSON: Request body is empty or not valid JSON", 400
@@ -26,7 +24,6 @@ def controller(request):
     response = {
         "cooling_power": cooling_power,
         "client_send_time": client_send_time,
-        "server_recieve_time": server_recieve_time
     }
 
     return response

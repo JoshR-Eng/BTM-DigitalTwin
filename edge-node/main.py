@@ -24,14 +24,11 @@ except (FileNotFoundError, KeyError) as e:
 # Prepare Log File
 with open(LOG_FILE, mode='w', newline='') as log:
     writer = csv.writer(log)
-    writer.writerow(['cooling_power','client_send_time', 
-                    'server_recieve_time', 'client_recieve_time'])
+    writer.writerow(['cooling_power','client_send_time', 'client_recieve_time'])
                      
 
 # Add something to deal with intial edge case where deque 
 # will be empty so no way to calc dt
-#  ¦
-# \¦/
 init_temp = temperature_data[0]
 client_send_time = datetime.now(timezone.utc)
 recent_data.append({
@@ -61,13 +58,11 @@ for temperature in temperature_data[1:]:
         response_data = response.json()
         cooling_power = response_data.get('cooling_power')
         client_send_time = response_data.get('client_send_time')
-        server_recieve_time = response_data.get('server_recieve_time')
 
         with open(LOG_FILE, mode='a', newline='') as log:
             writer = csv.writer(log)
             writer.writerow([cooling_power, 
                              client_send_time, 
-                             server_recieve_time, 
                              client_recieve_time.isoformat()])
             
         print(f"-> Received: Cooling Power={cooling_power:.2f} W")
