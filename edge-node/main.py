@@ -1,79 +1,109 @@
 # Imports
-import csv, requests, time, os
+import csv
+import requests
+import time
+import json
+import serial
+import os
 from collections import deque
-from dotenv import load_dotenv
 from datetime import datetime, timezone
 
-# Initilise 
-load_dotenv()
-URL = os.getenv('URL')
-FILE_PATH = os.getenv('FILE_PATH')
-LOG_FILE = os.getenv('LOG_FILE')
-recent_data = deque(maxlen=10)
 
-# ¦--- Handle static data - only really applicable to this test script
+# ----------------------------------    Initilise    -------------------------------------- 
+
+URL = 'https://pi-control-804893961704.europe-west1.run.app'
+LOG_FILE = 'BTM-DigitalTwin/logs/results.csv' # remember to create this directory on Pi first
+recent_data = deque(maxlen=10)
+baudrate = 115200
+
 try:
-    with open(FILE_PATH, mode='r') as csv_file:
-        csv_reader = csv.DictReader(csv_file)
-        temperature_data = [float(row['Temperature']) for row in csv_reader]
-except (FileNotFoundError, KeyError) as e:
-    print(f"Error: {e}")
+    dataPath = serial.Serial('/dev/ttyACM0', baudrate, timeout=1)
+    dataPath.flush()
+    print("CONNECTED: to Arduino on /dev/ttyACM0")
+except serial.SerialException as e:
+    print(f"Error: Serial. {e}\n\tCould not connect to Arduino")
     exit()
-# ---¦
+
 
 # Prepare Log File
-with open(LOG_FILE, mode='w', newline='') as log:
-    writer = csv.writer(log)
-    writer.writerow(['cooling_power','client_send_time', 'client_recieve_time'])
-                     
+try:
+    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+    with open(LOG_FILE, mode='w', newline='') as log:
+        writer = csv.writer(log)
+        writer.writerow(['cooling_power','client_send_time', 'client_recieve_time'])
+        print(f"Log file created at {LOG_FILE}")
+except IOError as e:
+    print(f"Error: Log File. \n{e}\n\tLog File could not be created")
+    exit()
+               
+print("\tConnection Initialised \n\tEnabling hardware communication")
 
-# Add something to deal with intial edge case where deque 
-# will be empty so no way to calc dt
-init_temp = temperature_data[0]
-client_send_time = datetime.now(timezone.utc)
-recent_data.append({
-    "temperature": init_temp, 
-    "timestamp": client_send_time })
-time.sleep(0.5)
-# ----
+# ----------------------------------    Main Loop    --------------------------------------
 
-# Most of this will probabaly stay...
-for temperature in temperature_data[1:]:
+while True:
+    try:
+        if dataPath.in_waiting > 0:
+            line = dataPath.readline().decode('utf-8').strip()
 
-    current_time = datetime.now(timezone.utc)
-    previous_data_point = recent_data[-1]
-    dt = (current_time - previous_data_point["timestamp"]).total_seconds()
+            try:
+                arduino_data = json.loads(line)
 
-    payload = {
-        "temperature": temperature,
-        "dt": dt,
-        "client_send_time": current_time.isoformat()
-    }
+                if arduino_data.get('type') == 'temperature':
+                    recieved_temp = arduino_data.get('value')
 
-    response = requests.post(URL, json=payload)
-    client_recieve_time = datetime.now(timezone.utc)
+                    current_temp = (recieved_temp * 0.1)           # Applys scaling and offset of CAN config (in .dbc)
 
-    # Data response
-    if response.status_code == 200:
-        response_data = response.json()
-        cooling_power = response_data.get('cooling_power')
-        client_send_time = response_data.get('client_send_time')
+                    current_time = datetime.now(timezone.utc)
+                    dt = 1.0 # default for first run
+                    if recent_data:
+                        dt = (current_time - recent_data[-1]['timestamp']).total_seconds()
 
-        with open(LOG_FILE, mode='a', newline='') as log:
-            writer = csv.writer(log)
-            writer.writerow([cooling_power, 
-                             client_send_time, 
-                             client_recieve_time.isoformat()])
-            
-        print(f"-> Received: Cooling Power={cooling_power:.2f} W")
+                    payload = {
+                        "temperature": current_temp,
+                        "dt": dt,
+                        "client_send_time": current_time.isoformat()
+                    }
 
-    else:
-        print("Error")
-        exit()
+                    response = requests.post(URL, json=payload)
+                    client_recieve_time = datetime.now(timezone.utc)
 
+                    # Data response
+                    if response.status_code == 200:
+                        response_data = response.json()
+                        cooling_power = response_data.get('cooling_power')
+                        client_send_time = response_data.get('client_send_time')
 
-    recent_data.append({
-        "temperature": temperature,
-        "timestamp": current_time
-    })
+                        # Send response to dSPACE
+                        command_to_dSPACE = {'type': 'cooling_power', 'value': cooling_power}
+                        dataPath.write((json.dumps(command_to_dSPACE) + '\n').encode('utf-8'))
+
+                        print(f"{current_temp:.2f}K = {cooling_power}W Cooling")
+
+                        # Logging
+                        with open(LOG_FILE, mode='a', newline='') as log:
+                            writer = csv.writer(log)
+                            writer.writerow([cooling_power, 
+                                            client_send_time, 
+                                            client_recieve_time.isoformat()])
+                            
+                    else:
+                        print(f"\nERROR: Server \n{response.status_code} - {response.text}")
+                            
+                    recent_data.append({
+                        "temperature": current_temp,
+                        "timestamp": current_time
+                    })
+            except (json.JSONDecodeError, KeyError):
+                pass # ignore invalid json data
+        
+    except serial.SerialException as e:
+        print(f"\nERROR: Serial \n{e}.\n\t---Reconnecting---")
+        time.sleep(5)
+    except requests.exceptions.RequestException as e:
+        print(f"\nERROR: Network \n{e}.\n\t---Retrying---")
+        time.sleep(5)
+    except KeyboardInterrupt:
+        print("\nProgram Cancelled")
+        dataPath.close()
+        break
     time.sleep(0.01)
