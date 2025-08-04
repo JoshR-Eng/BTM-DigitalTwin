@@ -25,7 +25,7 @@ class CAN_Bus:
     def setup_bus(self):
         os.system(f'sudo ip link set {self.channel} type can bitrate {self.bitrate}')
         os.system(f'sudo ifconfig {self.channel} up')
-        return can.interface.Bus(channel=self.channel, bustype='socketcan')
+        return can.interface.Bus(channel=self.channel, interface='socketcan')
     
 
     def send_data(self, arb_id: int, data: bytes):
