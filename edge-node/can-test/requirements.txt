@@ -1,2 +1,2 @@
 requests==2.32.4
-serial==0.0.97
+python-can==4.5.0
