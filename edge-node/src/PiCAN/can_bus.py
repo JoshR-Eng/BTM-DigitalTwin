@@ -28,20 +28,33 @@ class CAN_Bus:
         return can.interface.Bus(channel=self.channel, interface='socketcan')
     
 
-    def send_data(self, arb_id: int, data: bytes):
+    def send_message(self, arb_id: int, data: bytes):
         msg = can.Message(arbitration_id=arb_id,
                           data=list(data),
                           is_extended_id=False)
         try:
             self.bus.send(msg)
-            print("Sent:", msg)                     # Could delete later - for error check
+            print("Sent:", msg)                     
         except can.CanError as e:
-            print(f'Send Error [CAN]: {e}')
+            print(f'ERROR: Can {e}')
 
     
-    def receive_data(self, timeout: float = 0.1) -> can.Message:
+    def receive_message(self, arb_id: int, timeout: float = 0.1):
+        """ Returns a dictionary containting 'raw_frame' and 'pi_receive_time' """
         try:
-            return self.bus.recv(timeout)
+            msg = self.bus.recv(timeout)
+            if msg is not None:
+                if msg.arbitration_id == arb_id:
+                    received = {
+                        'raw_frame': msg.data,
+                        'pi_receive_time': msg.timestamp
+                    }
+                    return received
+                else:
+                    print(f"INFO: Received message with non-matching ID: {msg.arbitration_id}")
+            else:
+                print("INFO: No message received within timeout period")
+                return None
         except can.CanError as e:
             print(f'Receive Error [CAN]: {e}')
             return None
@@ -50,3 +63,11 @@ class CAN_Bus:
     def disable_can(self):
         self.bus.shutdown()
         os.system(f'sudo ifconfig {self.channel} down')
+
+    
+    def flush_rx(self)
+        while True:
+            msg = self.bus.recv(timeout=0.1)
+            if msg is None:
+                break
+        return None

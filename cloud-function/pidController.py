@@ -1,6 +1,6 @@
 class PID_Controller:
 
-    def __init___(self, Kp, Ki, Kd, setpoint):
+    def __init__(self, Kp, Ki, Kd, setpoint):
         self.Kp = Kp
         self.Ki = Ki
         self.Kd = Kd
