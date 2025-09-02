@@ -1,29 +1,56 @@
-# cloud-function/main.py
+# Cloud/main.py
 import functions_framework 
-from datetime import datetime, timezone
-from pidController import PID_Controller
+from recursiveLeastSquares import RLS
 
-pid = PID_Controller(Kp=-5.21, Ki=-1.12, Kd = 0, setpoint = 295)
+# RLS object persists between invocations as long as the container is warm
+rls = RLS(forgetting_factor=0.995)
+
 @functions_framework.http
 def controller(request):
     """
-    Recives a JSON file containing temperature
-    Returns a cooling value for recieved data
+    Receives a JSON file containing system measurements,
+    returns updated internal resistance and state variables.
     """
-    request_json = request.get_json(silent=True)
-    if request_json is None:
-        return "Invalid JSON: Request body is empty or not valid JSON", 400
+    data = request.get_json(silent=True)
+    if data is None:
+        return "Invalid JSON", 400
     
-    current_temp = request_json['temperature']
-    dt = request_json['dt']
-    client_send_time = request_json.get('client_send_time')
+    # Extract incoming variables
+    T = data['temperature']           # current measured temperature
+    T_prev = data['temperature_prev'] # previous measured temperature
+    I = data['current']               # current draw [A]
+    P_cooling = data['cooling_power'] # applied cooling power [W]
+    dt = data['dt']                   # timestep [s]
+    r = data['internal_resistance']   # current estimate of R
+    p = data['p']                     # current covariance
+    
+    # Compute regression model 
+    phi, y = rls.compute_regressors_power(
+        new_temperature=T,
+        prev_temperature=T_prev,
+        cooling_power=P_cooling,
+        current=I,
+        dt=dt
+    )
+    
+    # Run RLS update
+    minimised_function = rls.update(
+        y= y,
+        phi=phi,
+        r=r,
+        p=p
+    )
 
-    pid_value = pid.feedback(current_temp, dt)
-    cooling_power = max(0, pid_value)
+    improved_r = minimised_function['r']
+    improved_p = minimised_function['p']
 
+    # Package response back to client
     response = {
-        "cooling_power": cooling_power,
-        "client_send_time": client_send_time,
+        'time_sent': data['time_sent'],  # echo back timestamp for syncing
+        'temperature_prev': T,           # send back new T as next-step T_prev
+        'internal_resistance': improved_r,
+        'p': improved_p,
+        'innovation': minimised_function['e']
     }
 
     return response
