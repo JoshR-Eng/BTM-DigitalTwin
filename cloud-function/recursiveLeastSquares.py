@@ -15,8 +15,8 @@ class RLS:
     def __init__(self, forgetting_factor: float = 0.995):
         self.forgetting_factor = forgetting_factor
         
-        self.Cm = 40000         # Variables unique to my model
-        self.R_th = 1000        # |
+        self.Cm = 76.8 * 520    # Variables unique to my model
+        self.R_th = 0.23        # |
         self.T_ambient = 295.0  # |_
 
     def compute_regressors_power(self, new_temperature, prev_temperature, cooling_power, current, dt):
