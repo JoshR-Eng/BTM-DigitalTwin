@@ -49,7 +49,7 @@ class RLS:
         k = (p * phi) / (self.forgetting_factor + (phi * phi * p))
 
         # Update estimates
-        self.r = r + (k * e)
-        self.p = (1 - (k * phi)) * (p / self.forgetting_factor)
+        updated_r = r + (k * e)
+        updated_p = (1 - (k * phi)) * (p / self.forgetting_factor)
 
-        return {"r": r, "p": p, "e": e}
+        return {"r": updated_r, "p": updated_p, "e": e}

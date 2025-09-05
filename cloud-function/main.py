@@ -16,14 +16,14 @@ def controller(request):
         return "Invalid JSON", 400
     
     # Extract incoming variables
-    T = data['temperature']           # current measured temperature
-    T_prev = data['temperature_prev'] # previous measured temperature
+    T = data['temp']                  # current measured temperature
+    T_prev = data['temp_prev']        # previous measured temperature
     I = data['current']               # current draw [A]
     P_cooling = data['cooling_power'] # applied cooling power [W]
     dt = data['dt']                   # timestep [s]
     r = data['internal_resistance']   # current estimate of R
     p = data['p']                     # current covariance
-    
+
     # Compute regression model 
     phi, y = rls.compute_regressors_power(
         new_temperature=T,
@@ -47,7 +47,7 @@ def controller(request):
     # Package response back to client
     response = {
         'time_sent': data['time_sent'],  # echo back timestamp for syncing
-        'temperature_prev': T,           # send back new T as next-step T_prev
+        'temp': T,           # send back new T as next-step T_prev
         'internal_resistance': improved_r,
         'p': improved_p,
         'innovation': minimised_function['e']
