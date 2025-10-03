@@ -7,14 +7,12 @@ ADD FILE DESCRIPTION
 # =================================================================
 
 from src.Cloud.cloudClient import Cloud
-from src.PiCAN.can_bus import CAN_Bus
-from src.PiCAN.can_message import Signal
-from src.DataHandling.can_buffer import CAN_buffer
+from src.PiCAN.can_handler import CAN_Handler
 from src.DataHandling.log import logger
 import os 
 import yaml
 from dotenv import load_dotenv
-from datetime import datetime, timezone
+from time import sleep, time
 
 # =================================================================
 # ------------------------- config import -------------------------
@@ -25,78 +23,135 @@ with open('config.yaml', 'r') as yaml_config:
     config = yaml.safe_load(yaml_config)
 
 # CAN Values
-rx = config['can']['RX']
-tx = config['can']['TX']
 bitrate = config['can']['bitrate']
+dbc_file_path = config['can']['dbc']
+rbat_initial = config['can']['rbat_initial']
 
 # Cloud Values
-cloud_variables = config['cloud']['variables']
+cloud_return_variables = config['cloud']['cloud_return_variables']
+cloud_warmup_period = config['cloud']['warmup_period']
+cloud_warmup_counter = 0
 CloudURL = os.getenv('CloudURL')
+
+# Globally define inital values for RLS
+covariance = config['rls']['covariance']
+time_prev = None
+temp_prev = None
 
 
 # =================================================================
 # -------------------------     setup     -------------------------
 # =================================================================
 
-# can
-can0 = CAN_Bus(channel='can0', bitrate=bitrate)
-rx_temperature_signal = Signal(length=2, start_byte=0, factor=0.01, offset=0)
-tx_cooling_power_signal = Signal(length=2, start_byte=0, factor=0.01, offset=0)
+can0 = CAN_Handler(channel='can0', bitrate=bitrate, dbc_file=dbc_file_path)
 
-# cloud
-cloud = Cloud(URL=CloudURL, timeout=3, return_variables=cloud_variables)
+cloud = Cloud(URL=CloudURL, timeout=3, return_variables=cloud_return_variables)
 
-# log
-log_header = cloud_variables + ['client_recieve_time']
+log_header = cloud_return_variables + ['time_recv','current','dt', 'cooling_power']
 log = logger(directory_path='Logs/', file_headers=log_header)
 
-
+print(f"Main function will begin now,\nDT will warmup with" \
+    f" [{cloud_warmup_period}] Iterations")
 # =================================================================
 # -------------------------      loop     -------------------------
 # =================================================================
 
 def main():
 
+    global internal_resistance, covariance, time_prev, temp_prev, cloud_warmup_counter
+
     try:
         while True:
         
-            received_frame = can0.receive_message(rx, timeout=0.1) 
+            received_frame = can0.receive_message(timeout=0.1)
 
-            if received_frame is not None:
-                temperature = rx_temperature_signal.decode(received_frame['raw_frame'])
-                print(f"Received the value: {temperature:.2f}")
+            if received_frame:
+                
 
-                # Send payload to the cloud
+                temp = received_frame.get('Battery_Temperature')
+                current = received_frame.get('Battery_Current')
+                internal_resistance = received_frame.get('Battery_Internal_Resistance')
+                cooling_power = received_frame.get('BTM_Power')
+
+                print(f"\nRECEIVED"\
+                      f"\n\tT: {temp}\n\tI: {current}\n\tRbat: {internal_resistance}\n\t"\
+                      f"Pbtm: {cooling_power}")
+
+                if temp_prev is None or time_prev is None:
+                    temp_prev = temp
+                    time_prev = time()
+                    sleep(0.1)
+                    continue
+
+                if abs(current) < 5:
+                    sleep(1)
+                    continue # Low amps produce unreliable values and noise so skip
+                
+                time_sent = time()          # Remeber to assign this to time_prev after
+                dt = time_sent - time_prev
+
+                if internal_resistance == 0:
+                    internal_resistance = rbat_initial
+                
                 payload = {
-                    "temperature": temperature,
-                    "dt": 0.5,
-                    "client_send_time": datetime.now(timezone.utc)
+                    'time_sent': time_sent,
+                    'temp': temp,
+                    'temp_prev': temp_prev,
+                    'current': current,
+                    'cooling_power': cooling_power,
+                    'dt': dt,
+                    'internal_resistance': internal_resistance,
+                    'p': covariance,
                 }
-                print(f"Payload being sent:\n\ttemperature - {payload['temperature']}\n\tdt - {payload['dt']}\n\tclient_send_time - {payload['client_send_time']}")
+
                 cloud_response = cloud.send_dataset(payload=payload)
 
-                # Check response is valid
-                if cloud_response and 'cooling_power' in cloud_response:
-                    cooling_power = float("{:.2f}".format(cloud_response['cooling_power']))
-                    print(f"Cloud returned cooling power: {cooling_power}")
+                if cloud_response:
+                    print("Cloud Responded")
+                    if cloud_warmup_counter < cloud_warmup_period:  # A warmup period for Cloud controller
+                        if cloud_warmup_counter == cloud_warmup_period -2:
+                            print("\n\n\n\t -------- Warmup Complete. Going Live... -------- \n\n\n")
+                        cloud_warmup_counter += 1
+                        # Need to send inital value other wise rbat=0 which will break the DT
+                        can_payload = {'RPiBattery_Internal_Resistance': rbat_initial} #
+                        print(f"Sent {can_payload} back to dSPACE")
+                        can0.send_message(signals=can_payload, message_name='RPi')
+                        print(f"RETURNED\n\t {can_payload}")
+                        covariance = cloud_response['p']
+                        time_prev = time_sent
+                        temp_prev = temp
+                        sleep(1)
+                        continue
+                    else:
+                        internal_resistance = float(
+                            "{:.5f}".format(cloud_response['internal_resistance']))
 
-                    # Send command to dSPACE
-                    encoded_cooling_power = tx_cooling_power_signal.encode(cooling_power)
-                    can0.send_message(arb_id=tx, data=encoded_cooling_power)
-                    print(f"\n\tCAN TX message sent to dSPACE")
+                        can_payload = {'RPiBattery_Internal_Resistance': internal_resistance}
+                        can0.send_message(signals=can_payload, message_name='RPi')
+                        print(f"RETURNED\n\t {can_payload}")
 
+                    covariance = cloud_response['p']
+                    time_prev = time_sent
+                    temp_prev = temp
+
+                    data_to_log = cloud_response
+                    data_to_log['current'] = current
+                    data_to_log['dt'] = dt
+                    data_to_log['cooling_power'] = cooling_power
                     
-                    log.append(cloud_response) # Log Data
-                    can0.flush_rx()            # Flush any stale data in cache
+                    log.append(data_to_log)
                 else:
-                    print(f"ERROR: Cloud Response missing - Response = {cloud_response}")
-
+                    print("ERROR: No response from cloud") 
+                    time_prev = time_sent # make sure values are still updated
+                    temp_prev = temp
             else:
                 print("ERROR: NO CAN Received")
-
+                
+            sleep(1)
+            
+            
     except KeyboardInterrupt:
         pass
-
     finally:
         can0.disable_can()
 
