@@ -1,9 +1,19 @@
 # Battery Thermal Managment System on Digital Twin Feasibility Study
 
-A feasibility study to prove digital twins application for real-time monitoring, prediction and control of a battery's thermal state. Validated via HIL testing on dSPACE hardware, the digital twin will be hosted in the cloud and a Raspberry Pi used to interface the connection. 
+A feasibility study to prove digital twins application for real-time monitoring, prediction and control of a battery's thermal state. Validated via HIL testing on dSPACE hardware, the digital twin will be hosted in the cloud and a Raspberry Pi used to as gateway between CAN bus and internet. 
 
 <img width="671" height="154" alt="BTM on Digital Twin drawio" src="https://github.com/user-attachments/assets/6f79c625-aff8-4c71-80f0-1f1c24d77fa2" />
 
-- **Battery System - dSPACE:** The 'plant', a real-time model emulated on dSPACE platform that simulates the battery's thermal dynamics and produces sensor data
-- **Network Gateway (Raspberry Pi):** The 'edge computing', connected to dSPACES I/O via CAN it facilitates bi-directional communication between the cloud and allows metric measuremnts
-- **Digital Twin (Cloud-Hosted):** The 'brain', a system capable of varying functionality from simple feedback control to SOX, predictive control and model training
+This repository contains code and scripts developed during my internship project on a feasibility study of a cloud-based digital twin for EV battery thermal management (BTM).  
+The system integrates a **dSPACE hardware-in-the-loop setup**, a **Raspberry Pi CAN gateway**, and a **Google Cloud–hosted Recursive Least Squares (RLS) estimator**.
+
+## Project Overview
+- **Objective:** Evaluate the feasibility of using a cloud-hosted estimator to update the internal resistance parameter (`Rbat`) of a battery in real time and feed it back into a model predictive controller (MPC).
+- **Hardware:** dSPACE MicroAutoBox II, Raspberry Pi with CAN HAT.
+- **Software:** MATLAB/Simulink, Python (CAN interface, cloud communication), Google Cloud Functions (RLS estimator).
+
+## Repository Contents
+- `/edge-node/` — Python scripts for Raspberry Pi CAN communication and cloud API calls.  
+- `/cloud-function/` — Cloud Function code for RLS estimator implementation.  
+- `/Resources/Final-Test` — Dataset and Jupyter notebook script from final tests
+
