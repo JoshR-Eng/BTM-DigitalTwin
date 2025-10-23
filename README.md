@@ -2,7 +2,7 @@
 
 A feasibility study to prove digital twins application for real-time monitoring, prediction and control of a battery's thermal state. Validated via HIL testing on dSPACE hardware, the digital twin will be hosted in the cloud and a Raspberry Pi used to as gateway between CAN bus and internet. 
 
-<img width="671" height="154" alt="BTM on Digital Twin drawio" src="https://github.com/user-attachments/assets/6f79c625-aff8-4c71-80f0-1f1c24d77fa2" />
+<img width="681" height="599" alt="system (1)" src="https://github.com/user-attachments/assets/19861aae-242e-472c-9a13-4db33e2b5341" />
 
 This repository contains code and scripts developed during my internship project on a feasibility study of a cloud-based digital twin for EV battery thermal management (BTM).  
 The system integrates a **dSPACE hardware-in-the-loop setup**, a **Raspberry Pi CAN gateway**, and a **Google Cloud–hosted Recursive Least Squares (RLS) estimator**.
